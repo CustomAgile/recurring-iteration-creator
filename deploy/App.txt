@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recurring Iteration Creator</title>
+    <!--  (c) 2016 CA Technologies.  All Rights Reserved. -->
+    <!--  Build Date: Mon Oct 17 2016 22:20:33 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Mon Oct 17 2016 22:20:33 GMT-0600 (MDT)";
+        var BUILDER = "kcorkan";
+        var CHECKSUM = 18850181316;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.1/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Rally.ui.dialog.Dialog',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+    title: "Build Information",
+    
+    defaults: { padding: 5, margin: 5 },
+
+    closable: true,
+     
+    draggable: true,
+
+    autoShow: true,
+   
+    width: 350,
+    
+    informationalConfig: null,
+    
+    items: [{xtype:'container', itemId:'information' }],
+    
+    initComponent: function() {
+        var id = Ext.id(this);
+        this.title =  "<span class='icon-help'> </span>" + this.title;
+        this.callParent(arguments);
+    },
+    
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/var BUILDER = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+       
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+   
+        return chk;
+    },
+    
+    _checkChecksum: function(container) {
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    var stored_checksum = me._generateChecksum(text);
+                    if ( CHECKSUM !== stored_checksum ) {
+                        deferred.resolve(false);
+                        return;
+                    }
+                }
+                deferred.resolve(true);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    _addToContainer: function(container){
+        var config = Ext.apply({
+            xtype:'container',
+            height: 200,
+            overflowY: true
+        }, this.informationalConfig);
+        
+        container.add(config);
+    },
+    
+    afterRender: function() {
+        var app = Rally.getApp();
+        
+        if ( !Ext.isEmpty( this.informationalConfig ) ) {
+            var container = this.down('#information');
+            this._addToContainer(container);
+            
+        }
+        
+        if (! app.isExternal() ) {
+            this._checkChecksum(app).then({
+                scope: this,
+                success: function(result){
+                    if ( !result ) {
+                        this.addDocked({
+                            xtype:'container',
+                            cls: 'build-info',
+                            dock: 'bottom',
+                            padding: 2,
+                            html:'<span class="icon-warning"> </span>Checksums do not match'
+                        });
+                    }
+                },
+                failure: function(msg){
+                    console.log("oops:",msg);
+                }
+            });
+        } else {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                dock: 'bottom',
+                html:'... Running externally'
+            });
+        }
+        this.callParent(arguments);
+    },
+    
+    beforeRender: function() {
+        var me = this;
+        this.callParent(arguments);
+
+        if (this.informationHtml) {
+            this.addDocked({
+                xtype: 'component',
+                componentCls: 'intro-panel',
+                padding: 2,
+                html: this.informationHtml,
+                doc: 'top'
+            });
+        }
+        
+        this.addDocked({
+            xtype:'container',
+            cls: 'build-info',
+            padding: 2,
+            dock:'bottom',
+            html:"This app was created by the CA AC Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            this.addDocked({
+                xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                dock: 'bottom',
+                html: Ext.String.format("Build date/time: {0} ({1})",
+                    APP_BUILD_DATE,
+                    BUILDER)
+            });
+        }
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('CA.technicalservices.button.RecurrencePickerButton',{
+    extend: "Ext.container.Container",
+    
+    alias: 'widget.tsrecurrencepickerbutton',
+    
+    inactive: true,
+    
+    config: {
+        text: '<span class="icon-refresh"> </span>'
+    },
+    
+    layout: 'hbox',
+    
+    items: [
+        {
+            xtype:'rallybutton',
+            text: '<span class="icon-refresh"> </span>'
+        },
+        {
+            xtype:'container',
+            itemId:'picker_box'
+        }
+    ],
+    
+    constructor:function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+    
+    initComponent: function() {
+        this.callParent(arguments);
+        this.addEvents(
+            'change'
+        );
+        
+        this.mon(this.down('rallybutton'),'click',this._toggleDetails,this);
+        
+    },
+    
+    _toggleDetails: function() {
+        var me = this;
+        var container = this.down('#picker_box');
+        
+        if ( !this.inactive ) {
+            container.removeAll();
+            this.inactive = true;
+            this.fireEvent('click',this);
+            return;
+        }
+        
+        this._addRadioButtons(container);
+        this.inactive = false;
+        this.fireEvent('change',me);
+    },
+    
+    _addRadioButtons: function(container) {
+        var me = this;
+        
+        container.add({
+            xtype:'radiogroup',
+            id: 'radio_group_id',
+            item_id: 'radio_group',
+            layout: 'vbox',
+            items: [{
+                xtype:'radiofield',
+                boxLabel: 'After x occurrences',
+                checked: true,
+                name: 'occurrence_type',
+                inputValue: 1,
+                listeners: {
+                    render: function() {
+                        this.boxLabelEl.update("");
+                        me.first_field = Ext.create('Rally.ui.NumberField',{
+                            itemId:'field_1',
+                            renderTo: this.boxLabelEl,
+                            disabled: !this.getValue(),
+                            minValue: 1,
+                            value: 1,
+                            labelWidth: 100,
+                            width: 140,
+                            fieldLabel: 'After occurrences',
+                            listeners: {
+                                scope: me,
+                                change: function() {
+                                    me.fireEvent('change',me);
+                                }
+                            }
+                        });
+                    },
+                    change: function() {
+                        me.first_field.setDisabled(!this.getValue());
+                        me.fireEvent('change',me);
+                    }
+                }
+            },
+            {
+                xtype:'radiofield',
+                boxLabel: 'By date',
+                name: 'occurrence_type',
+                checked: false,
+                inputValue: 2,
+                listeners: {
+                    render: function() {
+                        this.boxLabelEl.update("");
+                        me.second_field = Ext.create('Rally.ui.DateField',{
+                            renderTo: this.boxLabelEl,
+                            itemId:'field_2',
+                            disabled: !this.getValue(),
+                            labelWidth: 100,
+                            fieldLabel: 'By Date',
+                            listeners: {
+                                scope: me,
+                                change: function() {
+                                    me.fireEvent('change',me);
+                                }
+                            }
+                        });
+                    },
+                    change: function() {
+                        me.second_field.setDisabled(!this.getValue());
+                        me.fireEvent('change',me);
+                    }
+                }
+            }]
+        });
+        
+    },
+    
+    getValue: function() {
+        var group = this.down('radiogroup');
+        if ( group.getValue().occurrence_type == 1 ) {
+            return this.first_field.getValue();
+        }
+        
+        if ( group.getValue().occurrence_type == 2 ) {
+            var end_date = this.second_field.getValue();
+            if ( Ext.isEmpty(end_date) ) { return null; }
+            
+            return new Date(end_date.setHours(23,59,0,0));
+        }
+        
+        return null;
+    }
+});
+Ext.define('TSUtils',{
+    singleton: true,
+    
+    loadWsapiRecords: function(config,returnOperation){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        var default_config = {
+            model: 'Defect',
+            fetch: ['ObjectID']
+        };
+        Ext.create('Rally.data.wsapi.Store', Ext.Object.merge(default_config,config)).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    if ( returnOperation ) {
+                        deferred.resolve(operation);
+                    } else {
+                        deferred.resolve(records);
+                    }
+                } else {
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
+    },
+
+    loadAStoreWithAPromise: function(config){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        var default_config = {
+            model: 'Defect',
+            fetch: ['ObjectID']
+        };
+        
+        var full_config = Ext.Object.merge(default_config,config);
+
+        Ext.create('Rally.data.wsapi.Store', full_config).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    deferred.resolve(this);
+                } else {
+                    me.logger.log("Failed: ", operation);
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
+    }
+});
+Ext.define('CA.techservices.dialog.AddIterationDialog',{
+    extend: 'Rally.ui.dialog.Dialog',
+    alias: 'widget.tsadditerationdialog',
+    
+    config: {
+        title    : 'Add Iteration',
+        autoShow : true,
+        closable : true
+    },
+
+    constructor: function(config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+
+    initComponent: function() {
+        this.callParent(arguments);
+        Ext.tip.QuickTipManager.init();
+
+        this._getIterationModel().then({
+            scope: this,
+            success: function(model) {
+                this.iteration_model = model;
+                this.drawHeader();
+            
+                this.drawFooter();
+            }
+        });
+    },
+
+    _getIterationModel: function() {
+        var deferred = Ext.create('Deft.Deferred');
+        
+        Rally.data.ModelFactory.getModel({
+            type: 'Iteration',
+            scope: this,
+            success: function(model) {
+                model = this._changeFieldRights(model);
+                deferred.resolve(model);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    drawHeader: function() {
+        
+        this.addDocked({
+            xtype:'container',
+            dock:'top',
+            itemId:'header',
+            layout: 'vbox',
+            items: [{
+                xtype:'container',
+                itemId:'message_box',
+                width: '100%',
+                padding: 5,
+                tpl:'<tpl><span class="warning">{message}</span></tpl>'
+            },
+            {
+                xtype:'container',
+                layout: 'hbox',
+                defaults: {
+                    margins: '5 5 5 10'
+                },
+                items: [{
+                    xtype:'rallytextfield',
+                    itemId: 'iteration_name_pattern',
+                    fieldLabel: 'Name Prefix',
+                    labelWidth: 75,
+                    value: 'Sprint',
+                    height: 23,
+                    margins: '5 5 5 25',
+                    qtip: 'Sprints will be named with this followed by YYYYMMDD for final day',
+                    listeners: {
+                        render: function(c) {
+                            Ext.QuickTips.register({
+                                target: c.getEl(),
+                                text: c.qtip
+                            });
+                        }
+                    }
+                },
+                {
+                    xtype:'rallydatefield',
+                    itemId:'iteration_start_date',
+                    fieldLabel: 'Start',
+                    labelWidth: 45,
+                    listeners: {
+                        scope: this,
+                        change: this._checkDates
+                    }
+                },
+                {
+                    xtype:'rallydatefield',
+                    itemId:'iteration_end_date',
+                    fieldLabel: 'End',
+                    labelWidth: 35,
+                    listeners: {
+                        scope: this,
+                        change: this._checkDates
+                    }
+                },
+                {
+                    xtype:'rallycheckboxfield',
+                    itemId:'copy_to_children',
+                    boxLabelAlign: 'after',
+                    boxLabel: 'Copy to child projects',
+                    margins: '0 5 5 10',
+                    listeners: {
+                        scope: this,
+                        change: this._checkDates
+                    }
+                },
+                {
+                    xtype:'tsrecurrencepickerbutton',
+                    listeners: {
+                        scope: this,
+                        change: this._checkDates
+                    }
+                }]
+            },
+            {
+                xtype:'container',
+                layout: 'hbox',
+                items: [ {
+                    xtype:'container',
+                    itemId:'task_box',
+                    padding: 5,
+                    tpl:'<tpl><span>To Do:</span><br/><ul>' +
+                            '<li>Create this many (per proj): {numberOfSprints}</li>' +
+                            '<li>Sprint length (days): {daysInSprint}</li>' +
+                            '<li>Starting: {startDate}</li>' +
+                            '<li>Ending: {finalDate}</li>' +
+                            '</ul></tpl>'
+                },
+                {
+                    xtype:'textareafield',
+                    itemId:'status_box',
+                    html: '',
+                    width: 600,
+                    height: 275,
+                    padding: 10
+                }]
+            }]
+        });
+    },
+
+    drawFooter: function() {
+        this.addDocked({
+            xtype: 'toolbar',
+            dock: 'bottom',
+            layout: {
+                type: 'hbox',
+                pack: 'center'
+            },
+            ui: 'footer',
+            itemId: 'footer',
+            items: [
+                {
+                    xtype: 'rallybutton',
+                    text: 'Create',
+                    itemId: 'create_button',
+                    cls: 'primary rly-small',
+                    disabled: true,
+                    handler: function() {
+                        this._create();
+                    },
+                    scope: this
+                },
+                {
+                    xtype: 'rallybutton',
+                    text: 'Cancel',
+                    ui: 'link',
+                    cls: 'secondary rly-small',
+                    handler: function() {
+                        this.close();
+                    },
+                    scope: this
+                }
+            ]
+        });
+    },
+    
+    _getStartDateFromField:function(start_field){
+        if ( Ext.isEmpty(start_field) ) {
+            start_field = this.down('#iteration_start_date');
+        }
+        var start_date = start_field.getValue();
+        if ( Ext.isEmpty(start_date) ) { return null; }
+        return  Rally.util.DateTime.convertFromEditing(start_date); //new Date(start_date.setHours(0,0,0,0));
+    },
+    
+    _getEndDateFromField:function(end_field){
+        if ( Ext.isEmpty(end_field) ) {
+            end_field = this.down('#iteration_end_date');
+        }
+        
+        var end_date = end_field.getValue();
+        if ( Ext.isEmpty(end_date) ) { return null; }
+
+        return Rally.util.DateTime.convertFromEditing(end_date); //new Date(end_date.setHours(23,59,0,0));
+    },
+
+    _copyToChildProjects: function() {
+        var children_box = this.down('#copy_to_children');
+        
+        if ( Ext.isEmpty(children_box) ) { return false; }
+        return children_box.getValue() || false;
+    },
+    // update message_box if there are existing iterations
+    // that overlap
+    _checkDates: function() {
+        var button = this.down('#create_button');
+        if ( !Ext.isEmpty(button) ) { button.setDisabled(true); }
+        
+        var start_field = this.down('#iteration_start_date'),
+            end_field = this.down('#iteration_end_date'),
+            message_box = this.down('#message_box'),
+            repeat_field = this.down('tsrecurrencepickerbutton');
+        
+        message_box.update({message: ' '});
+
+        if ( Ext.isEmpty(start_field) || Ext.isEmpty(end_field) ) {
+            return;
+        }
+        
+        var start_date = this._getStartDateFromField(start_field);
+        var end_date = this._getEndDateFromField(end_field);
+        
+        if ( Ext.isEmpty(start_date) || Ext.isEmpty(end_date) ) {
+            return;
+        }
+                
+        if ( !Ext.isEmpty(repeat_field) && !repeat_field.inactive ) {
+            var repeat_value = repeat_field.getValue();
+            if ( Ext.isEmpty(repeat_value) ) { 
+                message_box.update({message:'No reccurrence set (click button to remove)'});
+                return;
+            }
+            
+            if ( Ext.isDate(repeat_value) ) {
+                end_date = repeat_value;
+            } 
+        }
+        
+        if ( end_date < start_date ) {
+            message_box.update({message: 'Dates are in wrong order.'});
+            return;
+        }
+        
+        start_date = Rally.util.DateTime.toIsoString(start_date);
+        end_date = Rally.util.DateTime.toIsoString(end_date);
+                
+        var start_inside_filters = Rally.data.wsapi.Filter.and([
+            {property:'StartDate',operator:'>=',value: start_date},
+            {property:'StartDate',operator:'<=',value: end_date}
+        ]);
+        
+        var end_inside_filters = Rally.data.wsapi.Filter.and([
+            {property:'EndDate',operator:'>=',value: start_date},
+            {property:'EndDate',operator:'<=',value: end_date}
+        ]);
+        
+        var overlap_filters = Rally.data.wsapi.Filter.and([
+            {property:'StartDate',operator:'<=',value: start_date},
+            {property:'EndDate',operator:'>=',value: end_date}
+        ]);
+        
+        var filters = start_inside_filters.or(end_inside_filters.or(overlap_filters));
+        
+        var config = {
+            model: 'Iteration',
+            filters: filters,
+            limit: 1,
+            pageSize: 1,
+            context: {
+                projectScopeDown: false,
+                projectScopeUp: false
+            }
+        };
+        
+        if ( this._copyToChildProjects() ) {
+            config.context.projectScopeDown = true;
+        }
+        
+        // TODO: check if there are existing iterations with recurrence turned on
+        // TODO: check if there are existing iterations with recurrence and children turned on
+
+        TSUtils.loadWsapiRecords(config,true).then({
+            scope: this,
+            success: function(results) {
+                var count = results.resultSet.totalRecords;
+                if ( count > 0 ) {
+                    var verb = "is";
+                    var noun = "iteration";
+                    if ( count > 1 ) { 
+                        verb = "are";
+                        noun = "iterations";
+                    }
+                    var message = Ext.String.format("Warning.  There {0} {1} existing overlapping {2}.",
+                        verb,
+                        count,
+                        noun
+                    );
+                    message_box.update({message: message});
+                }
+                
+                this._setConfiguration();
+                if ( !Ext.isEmpty(button) ) { button.setDisabled(false); }
+            },
+            failure: function(msg) {
+                Ext.Msg.alert('Problem checking iterations', msg);
+            }
+        });
+    },
+    
+    _setConfiguration: function(){
+        var start_date = this._getStartDateFromField();
+        var end_date   = this._getEndDateFromField();
+        
+        var days_in_sprint = Rally.util.DateTime.getDifference(end_date,start_date,'day') + 1;
+        var number_of_sprints = 1;
+        var final_date = end_date;
+        
+        var repeat_field = this.down('tsrecurrencepickerbutton');
+        if ( !Ext.isEmpty(repeat_field) && !repeat_field.inactive ) {
+            var repeat_value = repeat_field.getValue();
+          
+            if ( Ext.isDate(repeat_value) ) {
+                number_of_sprints = this._getNumberOfSprintsFromEndDate(start_date, repeat_value, days_in_sprint);
+            } 
+            
+            if ( Ext.isNumber(repeat_value) ) {
+                number_of_sprints = repeat_value;
+            }
+            
+            final_date = Rally.util.DateTime.add(end_date, 'day', ( number_of_sprints - 1 ) * days_in_sprint);
+        }
+        
+        this.copy_config = {
+            numberOfSprints: number_of_sprints,
+            daysInSprint: days_in_sprint,
+            startDate: start_date,
+            endDate: end_date,
+            finalDate: final_date
+        };
+        
+        this.down('#task_box').update(this.copy_config);
+    },
+    
+    _getNumberOfSprintsFromEndDate: function(start_date, final_date, days_in_sprint) {
+        var counter = 0;
+        while(start_date <= final_date) {
+            counter++;
+            start_date = Rally.util.DateTime.add(start_date, 'day', days_in_sprint);
+        }
+        return counter;
+    },
+    
+    _create: function() {
+        var me = this;
+        
+        if ( Ext.isEmpty(this.copy_config) || this.copy_config == {} ) {
+            return;
+        }
+        
+        this.setLoading('Finding projects');
+        this._getProjects(this._copyToChildProjects()).then({
+            scope: this,
+            success: function(projects) {
+                projects = Ext.Array.unique( Ext.Array.flatten(projects) );
+                
+                var number_of_sprints = this.copy_config.numberOfSprints || 1;
+                var start_date = this.copy_config.startDate;
+                var end_date = this.copy_config.endDate;
+                
+                this.setLoading(false);
+                
+                var promises = [];
+                var prefix = this.down('#iteration_name_pattern').getValue() || "";
+                
+                Ext.Array.each(_.range(number_of_sprints), function(i) {
+                    var name = Ext.String.trim(prefix + " " + Ext.Date.format(end_date, 'Ymd'));
+                    var config = {
+                        name: name,
+                        startDate: start_date,
+                        endDate: end_date,
+                        projects: projects
+                    };
+                    
+                    promises.push( function() {
+                        return this._createIterations(config);
+                    });
+                    
+                    start_date = Rally.util.DateTime.add(start_date, 'day', this.copy_config.daysInSprint);
+                    end_date = Rally.util.DateTime.add(end_date, 'day', this.copy_config.daysInSprint);
+                },this);
+                
+                Deft.Chain.sequence(promises,this).then({
+                    success: function(results) {
+                        me._checkDates();
+                    },
+                    failure: function(msg) {
+                        Ext.Msg.alert('',msg);
+                    }
+                }).always(function(){
+                    me.setLoading(false);
+                });
+            },
+            failure: function(msg) {
+                Ext.Msg.alert("Problem fetching projects", msg);
+            }
+        });
+        
+    },
+    
+    _getProjects: function(get_children) {
+        var deferred = Ext.create('Deft.Deferred');
+                
+        var config = {
+            model:'Project',
+            filters: [{property:'ObjectID',value:Rally.getApp().getContext().getProject().ObjectID}],
+            fetch: ['Name','ObjectID','Children']
+        };
+        
+        TSUtils.loadWsapiRecords(config,false).then({
+            scope: this,
+            success: function(results) {
+                if ( !get_children || results[0].get('Children').Count === 0 ) { 
+                    deferred.resolve(results);
+                    return;
+                }
+                
+                this._getChildProjects(results[0], results).then({
+                    success: function(results) {
+                        deferred.resolve(results);
+                    },
+                    failure: function(msg) {
+                        deferred.reject(msg);
+                    }
+                });
+                
+            },
+            failure: function(msg) {
+               deferred.reject(msg);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    _getChildProjects: function(project, projects) {
+        var deferred = Ext.create('Deft.Deferred');
+        
+        var config = {
+            model:'Project',
+            filters: [{property:'Parent.ObjectID',value:project.get('ObjectID')}],
+            fetch: ['Name','ObjectID']
+        };
+        
+        TSUtils.loadWsapiRecords(config,false).then({
+            scope: this,
+            success: function(results) {
+                var me = this;
+                if ( results.length === 0 ) { 
+                    deferred.resolve(projects);
+                    return;
+                }
+                
+                projects = Ext.Array.push(projects, results);
+                
+                var promises = Ext.Array.map(results, function(p){
+                    return function() { 
+                        return me._getChildProjects(p,projects);
+                    };
+                });
+                
+                Deft.Chain.sequence(promises,me).then({
+                    success: function(results) {
+                        deferred.resolve(results);
+                    },
+                    failure: function(msg) {
+                        deferred.reject(msg);
+                    }
+                });
+            },
+            failure: function(msg) {
+               deferred.reject(msg);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    _createIterations: function(config){
+        var deferred = Ext.create('Deft.Deferred'),
+            me = this;
+        
+        var name = config.name;
+        var start_date = config.startDate;
+        var end_date = config.endDate;
+        var projects = config.projects;
+        
+        var promises = Ext.Array.map(projects, function(project){
+            return function() {
+                return me._createIteration(name,start_date,end_date,project);
+            }
+        });
+        
+        return Deft.Chain.sequence(promises, me);
+    },
+    
+    _createIteration: function(name,start_date,end_date,project){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        
+        this.setLoading(Ext.String.format("Creating {0} in {1}", 
+            name,
+            project.get('Name')
+        ));
+        
+        var fields = {
+            Name: name,
+            StartDate: start_date,
+            EndDate: end_date,
+            State: 'Planning',
+            Project: { _ref: project.get("_ref") }
+        };
+                
+        var iteration = Ext.create(this.iteration_model, fields);
+        iteration.save({
+            callback: function(result, operation) {
+                if(operation.wasSuccessful()) {
+                    var text = me.down('#status_box').getValue();
+                    
+                    text = text + "\nCreated " + name + " in " + project.get('Name');
+                    
+                    me.down('#status_box').setValue(text);
+                    
+                    deferred.resolve();
+                } else {
+                    console.log(operation);
+                    deferred.reject("Problem saving iteration " + name + " (" + operation.error.errors.join(', ') + ")" );
+                }
+            }
+        });
+
+        return deferred.promise;
+    },
+    
+    _changeFieldRights: function(model) {
+        var fields = model.getFields();
+        Ext.Array.each(fields, function(field,idx) {
+            if ( field.name == "Project" ) {
+                field.readOnly = false;
+                field.persist = true;
+            }
+        });
+        
+        return model;
+    }
+
+    
+});
+Ext.define("TSRecurringIterationCreator", {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    defaults: { margin: 10 },
+    items: [
+        {xtype:'container',itemId:'selector_box'},
+        {xtype:'container',itemId:'display_box'}
+    ],
+
+    
+    integrationHeaders : {
+        name : "TSRecurringIterationCreator"
+    },
+                        
+    launch: function() {
+        var me = this;
+        this._addButtons(this.down('#selector_box'));
+        this._updateData();
+    },
+    
+    _addButtons: function(container) {
+        container.removeAll();
+        
+        container.add({
+            xtype:'rallybutton',
+            text: 'Add',
+            disabled: true,
+            listeners: {
+                scope: this,
+                click: this._launchAddIterationDialog
+            }
+        });
+    },
+    
+    _updateData: function() {
+        var me = this,
+            field_names = ['Name','StartDate','EndDate','Project'],
+            button = this.down('rallybutton');
+        
+        this.setLoading("Loading Existing Iterations...");
+        
+        button.setDisabled(true);
+        
+        var config = {
+            model: 'Iteration',
+            fetch: field_names,
+            sorters: [{property:'EndDate',direction:'DESC'}]
+        };
+        
+        TSUtils.loadAStoreWithAPromise(config).then({
+            scope: this,
+            success: function(store) {
+                this._displayGrid(store,field_names);
+                button.setDisabled(false);
+            },
+            failure: function(error_message){
+                alert(error_message);
+            }
+        }).always(function() {
+            me.setLoading(false);
+        });
+    },
+    
+    _launchAddIterationDialog: function() {
+        // TODO
+        Ext.create('CA.techservices.dialog.AddIterationDialog',{
+            width    : Ext.getBody().getWidth() - 20,
+            height   : Ext.getBody().getHeight() - 20,
+            context: this.getContext()
+        });
+    },
+    
+    _displayGrid: function(store,field_names){
+        this.down('#display_box').add({
+            xtype: 'rallygrid',
+            store: store,
+            columnCfgs: field_names
+        });
+    },
+    
+    getOptions: function() {
+        return [
+            {
+                text: 'About...',
+                handler: this._launchInfo,
+                scope: this
+            }
+        ];
+    },
+    
+    _launchInfo: function() {
+        if ( this.about_dialog ) { this.about_dialog.destroy(); }
+        this.about_dialog = Ext.create('Rally.technicalservices.InfoLink',{});
+    },
+    
+    isExternal: function(){
+        return typeof(this.getAppId()) == 'undefined';
+    },
+    
+    //onSettingsUpdate:  Override
+    onSettingsUpdate: function (settings){
+        this.logger.log('onSettingsUpdate',settings);
+        // Ext.apply(this, settings);
+        this.launch();
+    }
+});
+
+            
+               Rally.launchApp('TSRecurringIterationCreator', {
+                   name: 'Recurring Iteration Creator'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+
+.warning {
+    color: red;
+    text-align: center;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
